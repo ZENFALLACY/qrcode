@@ -1,13 +1,14 @@
 /**
  * Menu Routes
- * GET    /api/menu      — fetch all menu items
- * POST   /api/menu      — create a new menu item
- * PUT    /api/menu/:id  — update a menu item
- * DELETE /api/menu/:id  — delete a menu item
+ * GET    /api/menu      — fetch all menu items (public)
+ * POST   /api/menu      — create (staff)
+ * PUT    /api/menu/:id  — update (staff)
+ * DELETE /api/menu/:id  — delete (staff)
  */
 
 const express = require('express');
 const router = express.Router();
+const { requireStaffAuth } = require('../middleware/authMiddleware');
 const {
     getMenuItems,
     createMenuItem,
@@ -16,8 +17,8 @@ const {
 } = require('../controllers/menuController');
 
 router.get('/menu', getMenuItems);
-router.post('/menu', createMenuItem);
-router.put('/menu/:id', updateMenuItem);
-router.delete('/menu/:id', deleteMenuItem);
+router.post('/menu', requireStaffAuth, createMenuItem);
+router.put('/menu/:id', requireStaffAuth, updateMenuItem);
+router.delete('/menu/:id', requireStaffAuth, deleteMenuItem);
 
 module.exports = router;

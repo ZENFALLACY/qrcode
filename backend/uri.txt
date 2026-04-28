@@ -1,1 +1,0 @@
-mongodb://udashiv18_db_user:R9wpZxxMVs6LU9pW@ac-5potlrr-shard-00-02.to5nncj.mongodb.net:27017,ac-5potlrr-shard-00-01.to5nncj.mongodb.net:27017,ac-5potlrr-shard-00-00.to5nncj.mongodb.net:27017/qr-menu?ssl=true&authSource=admin&replicaSet=atlas-3ax492-shard-0

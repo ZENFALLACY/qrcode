@@ -1,0 +1,18 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy the API as a Web Service, then set the same env vars in the Render dashboard.
+
+services:
+  - type: web
+    name: qr-menu-api
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set these in the dashboard (secrets):
+      # MONGO_URI, JWT_SECRET, ADMIN_PASSWORD_HASH, FRONTEND_ORIGINS

@@ -2,6 +2,8 @@
  * server.js
  * Main entry point for the QR Menu backend.
  */
+const dns = require('dns');
+dns.setServers(['1.1.1.1', '8.8.8.8']);
 
 const express = require('express');
 const mongoose = require('mongoose');
