@@ -5,16 +5,15 @@
  */
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api, setStaffToken, getStaffToken } from '../api/client';
 
 // Predefined category options
 const CATEGORIES = ['Starters', 'Main Course', 'Drinks', 'Desserts', 'Breads', 'Sides'];
 
 function AdminPage() {
-    // Authentication state
-    const [authenticated, setAuthenticated] = useState(
-        () => sessionStorage.getItem('adminAuth') === 'true'
-    );
+    // Authentication state (JWT in sessionStorage, validated on load)
+    const [authenticated, setAuthenticated] = useState(false);
+    const [bootstrapping, setBootstrapping] = useState(() => !!getStaffToken());
     const [password, setPassword] = useState('');
     const [authError, setAuthError] = useState('');
     const [authLoading, setAuthLoading] = useState(false);
@@ -39,10 +38,10 @@ function AdminPage() {
         setAuthError('');
 
         try {
-            const res = await axios.post('/api/admin/login', { password });
-            if (res.data.success) {
+            const res = await api.post('/api/admin/login', { password }, { skipAuth: true });
+            if (res.data.success && res.data.token) {
+                setStaffToken(res.data.token);
                 setAuthenticated(true);
-                sessionStorage.setItem('adminAuth', 'true');
             }
         } catch (err) {
             setAuthError(err.response?.data?.message || 'Incorrect password');
@@ -56,15 +55,29 @@ function AdminPage() {
      */
     const handleLogout = () => {
         setAuthenticated(false);
-        sessionStorage.removeItem('adminAuth');
+        setStaffToken(null);
     };
+
+    useEffect(() => {
+        const t = getStaffToken();
+        if (!t) {
+            setBootstrapping(false);
+            return;
+        }
+        api.get('/api/admin/me')
+            .then(() => setAuthenticated(true))
+            .catch(() => {
+                setStaffToken(null);
+            })
+            .finally(() => setBootstrapping(false));
+    }, []);
 
     /**
      * Fetch all menu items from the backend.
      */
     const fetchItems = async () => {
         try {
-            const res = await axios.get('/api/menu');
+            const res = await api.get('/api/menu');
             setMenuItems(res.data);
         } catch (err) {
             console.error('Failed to fetch menu items:', err);
@@ -127,17 +140,23 @@ function AdminPage() {
         try {
             if (editingId) {
                 // Update existing item
-                await axios.put(`/api/menu/${editingId}`, itemData);
+                await api.put(`/api/menu/${editingId}`, itemData);
                 showFeedback('success', `"${itemData.name}" updated successfully`);
             } else {
                 // Create new item
-                await axios.post('/api/menu', itemData);
+                await api.post('/api/menu', itemData);
                 showFeedback('success', `"${itemData.name}" added to the menu`);
             }
 
             resetForm();
             fetchItems(); // Refresh the list
         } catch (err) {
+            if (err.response?.status === 401) {
+                setStaffToken(null);
+                setAuthenticated(false);
+                showFeedback('error', 'Session expired. Please log in again.');
+                return;
+            }
             showFeedback('error', err.response?.data?.error || 'Something went wrong');
         }
     };
@@ -149,10 +168,16 @@ function AdminPage() {
         if (!window.confirm(`Delete "${item.name}" from the menu?`)) return;
 
         try {
-            await axios.delete(`/api/menu/${item._id}`);
+            await api.delete(`/api/menu/${item._id}`);
             showFeedback('success', `"${item.name}" deleted`);
             fetchItems();
         } catch (err) {
+            if (err.response?.status === 401) {
+                setStaffToken(null);
+                setAuthenticated(false);
+                showFeedback('error', 'Session expired. Please log in again.');
+                return;
+            }
             showFeedback('error', 'Failed to delete item');
         }
     };
@@ -163,6 +188,15 @@ function AdminPage() {
         groups[item.category].push(item);
         return groups;
     }, {});
+
+    if (bootstrapping) {
+        return (
+            <div className="loading">
+                <div className="spinner"></div>
+                <p>Checking session...</p>
+            </div>
+        );
+    }
 
     if (!authenticated) {
         return (

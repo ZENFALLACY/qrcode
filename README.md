@@ -1,129 +1,193 @@
 # QR Code Based Restaurant Menu System
 
-A full-stack QR code based restaurant menu and ordering system. Customers scan a QR code on their table, view the menu, add items to cart, and place an order — all from their phone.
+Full-stack QR menu: customers open a link, browse the menu, and place orders. Staff use **Admin** (menu CRUD) and **Kitchen** (order queue) with JWT-protected APIs.
 
-## Tech Stack
+## Tech stack
 
-| Layer      | Technology               |
-|------------|--------------------------|
-| Frontend   | React (Vite)             |
-| Backend    | Node.js + Express        |
-| Database   | MongoDB (Mongoose)       |
-| HTTP Client| Axios                    |
+| Layer       | Technology        |
+|------------|-------------------|
+| Frontend   | React (Vite)      |
+| Backend    | Node.js + Express |
+| Database   | MongoDB (Mongoose)|
+| Auth       | bcrypt + JWT      |
 
-## Project Structure
+## Security first
 
-```
+- **Never commit** `backend/.env` or real connection strings. Use [`backend/.env.example`](backend/.env.example) as a template.
+- If this repo (or any copy) ever contained real `MONGO_URI` or passwords in git history, **rotate** the Atlas DB user password and replace `ADMIN_PASSWORD_HASH` / `JWT_SECRET` before production.
+- To remove accidentally committed `node_modules` or `dist` from git tracking (keep files locally):
+
+  ```bash
+  git rm -r --cached frontend/node_modules backend/node_modules frontend/dist 2>nul
+  ```
+
+## Project structure
+
+```text
 qr-menu-project/
 ├── backend/
-│   ├── controllers/      # Route handlers
-│   ├── models/            # Mongoose schemas
-│   ├── routes/            # Express route definitions
-│   ├── server.js          # Entry point
-│   ├── seed.js            # Database seeder
-│   └── .env               # Environment config
+│   ├── controllers/
+│   ├── middleware/       # JWT auth for staff routes
+│   ├── models/
+│   ├── routes/
+│   ├── scripts/          # hash-password helper
+│   ├── server.js
+│   ├── seed.js
+│   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── pages/         # Menu and Cart pages
-│   │   ├── App.jsx        # Root component with routing
-│   │   ├── main.jsx       # React mount point
-│   │   └── index.css      # Global styles
-│   ├── index.html
-│   └── vite.config.js
+│   │   ├── api/client.js # Axios + VITE_API_URL + staff JWT
+│   │   ├── pages/
+│   │   └── ...
+│   ├── vite.config.js
+│   └── .env.example
+├── .github/workflows/ci.yml
+├── render.yaml           # optional Render blueprint
+├── DEPLOY.md             # step-by-step hosting
 └── README.md
 ```
 
 ## Prerequisites
 
-- **Node.js** (v16+)
-- **MongoDB** running locally on `mongodb://localhost:27017`
+- **Node.js** 18+ (CI uses 20)
+- **MongoDB** — local (`mongodb://localhost:27017/qr-menu`) or [MongoDB Atlas](https://www.mongodb.com/atlas)
 
-## Getting Started
+## Environment variables
 
-### 1. Clone & Install
+### Backend (`backend/.env`)
+
+Copy from example:
 
 ```bash
-# Backend
-cd qr-menu-project/backend
+cd backend
+copy .env.example .env   # Windows
+# cp .env.example .env   # macOS/Linux
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `PORT` | API port (default `5000` locally) |
+| `MONGO_URI` | MongoDB connection string |
+| `JWT_SECRET` | Secret used to sign staff JWTs |
+| `ADMIN_PASSWORD_HASH` | bcrypt hash of staff password (see below) |
+| `FRONTEND_ORIGINS` | Comma-separated CORS origins (e.g. `http://localhost:3000`) |
+| `JWT_EXPIRES_IN` | Optional JWT lifetime (default `8h`) |
+
+Generate a password hash:
+
+```bash
+cd backend
+npm install
+npm run hash-password -- "YourStrongPassword"
+```
+
+Paste the output into `ADMIN_PASSWORD_HASH` in `.env`.
+
+The committed **`.env.example`** includes a demo hash for the password `changeme` — use only for local testing; choose a strong password for anything public.
+
+### Frontend (`frontend/.env`)
+
+See [`frontend/.env.example`](frontend/.env.example).
+
+- **Local:** leave `VITE_API_URL` empty so `/api` is proxied to the backend (see `vite.config.js`).
+- **Production:** set `VITE_API_URL` to your deployed API origin (no trailing slash), e.g. `https://your-api.onrender.com`.
+
+## Getting started
+
+### 1. Install
+
+```bash
+cd backend
 npm install
 
-# Frontend
 cd ../frontend
 npm install
 ```
 
-### 2. Seed the Database
+### 2. Configure backend
 
-Populate the menu with sample items:
+Ensure `backend/.env` exists (from `.env.example`) with valid `MONGO_URI`, `JWT_SECRET`, and `ADMIN_PASSWORD_HASH`.
+
+### 3. Seed the database (optional)
 
 ```bash
 cd backend
 npm run seed
 ```
 
-### 3. Start the Backend
+Uses `MONGO_URI` from `.env` (falls back to local `mongodb://localhost:27017/qr-menu` in `seed.js` only).
+
+### 4. Run backend
 
 ```bash
 cd backend
 npm start
-# Server runs on http://localhost:5000
+# http://localhost:5000 — try GET /health
 ```
 
-### 4. Start the Frontend
+### 5. Run frontend
 
 ```bash
 cd frontend
 npm run dev
-# App runs on http://localhost:3000
+# http://localhost:3000
 ```
 
-### 5. Open the App
+### 6. Open the app
 
-Visit: **http://localhost:3000/menu?table=5**
+- Menu: **http://localhost:3000/menu?table=5**
+- Admin: **http://localhost:3000/admin** (staff password)
+- Kitchen: **http://localhost:3000/kitchen**
 
-This simulates a customer scanning a QR code at Table 5.
+## API overview
 
-## API Endpoints
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | — | Load balancer / uptime check |
+| GET | `/api/menu` | — | List menu items |
+| POST | `/api/menu` | Staff JWT | Create item |
+| PUT | `/api/menu/:id` | Staff JWT | Update item |
+| DELETE | `/api/menu/:id` | Staff JWT | Delete item |
+| POST | `/api/order` | — | Place order |
+| GET | `/api/status` | — | Ordering window message |
+| GET | `/api/orders` | Staff JWT | Pending orders |
+| PATCH | `/api/orders/:id/status` | Staff JWT | Update order status |
+| POST | `/api/admin/login` | — | Body `{ password }` → `{ token }` |
+| GET | `/api/admin/me` | Staff JWT | Validate JWT |
 
-| Method | Endpoint      | Description                            |
-|--------|---------------|----------------------------------------|
-| GET    | `/api/menu`   | Returns all menu items                 |
-| POST   | `/api/order`  | Creates a new order                    |
-| GET    | `/api/status` | Checks if ordering is currently open   |
+Staff JWT: `Authorization: Bearer <token>` (handled by [`frontend/src/api/client.js`](frontend/src/api/client.js)).
 
-### POST /api/order — Body
+## Ordering rules
 
-```json
-{
-  "tableNumber": 5,
-  "items": [
-    { "name": "Margherita Pizza", "price": 350, "quantity": 2 }
-  ]
-}
+Implemented in [`backend/controllers/orderController.js`](backend/controllers/orderController.js):
+
+- Ordering is **closed** between **10:00 PM and 6:00 AM** (server local time).
+- Orders require a **scheduled time** at least **4 hours** ahead.
+
+Adjust the time-window logic in that file if you change business rules.
+
+## QR codes
+
+Encode your **frontend** URL (not the API):
+
+```text
+https://<your-frontend-host>/menu?table=<TABLE_NUMBER>
 ```
 
-### GET /api/status — Response
+## Deployment
 
-```json
-{
-  "ordering": false,
-  "message": "Ordering is closed after 5 PM"
-}
-```
+See **[DEPLOY.md](DEPLOY.md)** for Vercel + Render (or similar) and env var checklist.
 
-## Ordering Rules
+## CI
 
-- Orders are **accepted before 5:00 PM**.
-- After 5:00 PM, the menu is visible but ordering is **disabled**.
-- The cutoff hour can be changed in `backend/controllers/orderController.js` (`ORDERING_CUTOFF_HOUR`).
+GitHub Actions runs `npm ci` in `backend` and `npm ci && npm run build` in `frontend` on push/PR to `main`/`master`.
 
-## QR Code Setup
+## Working with GitHub (solo → collaborators)
 
-Generate a QR code that points to:
+- Keep secrets only in **hosting env vars** and local `.env` (never push `.env`).
+- Use **branches + PRs** for changes so CI runs before merge.
+- When adding collaborators, they clone the repo, copy `.env.example` → `.env`, and run locally without sharing your secrets in chat.
 
-```
-http://<your-host>:3000/menu?table=<TABLE_NUMBER>
-```
+## License
 
-The `table` query parameter identifies the table placing the order.
+Use and modify for your homestay or restaurant as needed.

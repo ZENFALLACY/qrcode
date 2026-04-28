@@ -1,17 +1,14 @@
 /**
  * KitchenPage.jsx
- * Password-protected dashboard for restaurant staff to view pending orders.
- * Auto-refreshes every 10 seconds.
+ * Staff dashboard for pending orders (JWT-protected API).
  */
 
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api, setStaffToken, getStaffToken } from '../api/client';
 
 function KitchenPage() {
-    // Shared authentication state (same as AdminPage)
-    const [authenticated, setAuthenticated] = useState(
-        () => sessionStorage.getItem('adminAuth') === 'true'
-    );
+    const [authenticated, setAuthenticated] = useState(false);
+    const [bootstrapping, setBootstrapping] = useState(() => !!getStaffToken());
     const [password, setPassword] = useState('');
     const [authError, setAuthError] = useState('');
     const [authLoading, setAuthLoading] = useState(false);
@@ -20,19 +17,30 @@ function KitchenPage() {
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState(new Date());
 
-    /**
-     * Handle login (shared admin password)
-     */
+    useEffect(() => {
+        const t = getStaffToken();
+        if (!t) {
+            setBootstrapping(false);
+            return;
+        }
+        api.get('/api/admin/me')
+            .then(() => setAuthenticated(true))
+            .catch(() => {
+                setStaffToken(null);
+            })
+            .finally(() => setBootstrapping(false));
+    }, []);
+
     const handleLogin = async (e) => {
         e.preventDefault();
         setAuthLoading(true);
         setAuthError('');
 
         try {
-            const res = await axios.post('/api/admin/login', { password });
-            if (res.data.success) {
+            const res = await api.post('/api/admin/login', { password }, { skipAuth: true });
+            if (res.data.success && res.data.token) {
+                setStaffToken(res.data.token);
                 setAuthenticated(true);
-                sessionStorage.setItem('adminAuth', 'true');
             }
         } catch (err) {
             setAuthError(err.response?.data?.message || 'Incorrect password');
@@ -41,47 +49,52 @@ function KitchenPage() {
         }
     };
 
-    /**
-     * Fetch pending orders
-     */
+    const handleLogout = () => {
+        setAuthenticated(false);
+        setStaffToken(null);
+        setOrders([]);
+    };
+
     const fetchOrders = async () => {
         try {
-            const res = await axios.get('/api/orders');
+            const res = await api.get('/api/orders');
             setOrders(res.data);
             setLastUpdated(new Date());
         } catch (err) {
+            if (err.response?.status === 401) {
+                setStaffToken(null);
+                setAuthenticated(false);
+                return;
+            }
             console.error('Failed to fetch orders:', err);
         } finally {
             setLoading(false);
         }
     };
 
-    /**
-     * Mark an order as completed
-     */
     const markCompleted = async (orderId) => {
         try {
-            await axios.patch(`/api/orders/${orderId}/status`, { status: 'completed' });
-            // Remove the order instantly from the UI for a snappy feel
-            setOrders(prev => prev.filter(order => order._id !== orderId));
+            await api.patch(`/api/orders/${orderId}/status`, { status: 'completed' });
+            setOrders((prev) => prev.filter((order) => order._id !== orderId));
         } catch (err) {
+            if (err.response?.status === 401) {
+                setStaffToken(null);
+                setAuthenticated(false);
+                return;
+            }
             console.error('Failed to update order:', err);
             alert('Failed to mark order as complete');
         }
     };
 
-    // Auto-refresh orders every 10 seconds
     useEffect(() => {
         if (!authenticated) return;
 
-        // Initial fetch
         fetchOrders();
-
         const intervalId = setInterval(fetchOrders, 10000);
         return () => clearInterval(intervalId);
     }, [authenticated]);
 
-    // Format time passed since order
     const formatTimePassed = (dateString) => {
         const orderTime = new Date(dateString);
         const diffMs = new Date() - orderTime;
@@ -91,6 +104,15 @@ function KitchenPage() {
         if (diffMins === 1) return '1 min ago';
         return `${diffMins} mins ago`;
     };
+
+    if (bootstrapping) {
+        return (
+            <div className="loading">
+                <div className="spinner"></div>
+                <p>Checking session...</p>
+            </div>
+        );
+    }
 
     if (!authenticated) {
         return (
@@ -114,7 +136,7 @@ function KitchenPage() {
                             <button
                                 type="button"
                                 className="btn btn-secondary"
-                                onClick={() => window.location.href = '/menu'}
+                                onClick={() => { window.location.href = '/menu'; }}
                             >
                                 Cancel
                             </button>
@@ -143,9 +165,14 @@ function KitchenPage() {
                         Last synced: {lastUpdated.toLocaleTimeString()}
                     </p>
                 </div>
-                <button className="btn btn-secondary" onClick={fetchOrders}>
-                    🔄 Refresh Now
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button type="button" className="btn btn-secondary" onClick={fetchOrders}>
+                        🔄 Refresh Now
+                    </button>
+                    <button type="button" className="btn btn-secondary" onClick={handleLogout}>
+                        Logout
+                    </button>
+                </div>
             </div>
 
             {orders.length === 0 ? (
@@ -156,18 +183,31 @@ function KitchenPage() {
                 </div>
             ) : (
                 <div className="order-grid">
-                    {orders.map(order => (
+                    {orders.map((order) => (
                         <div key={order._id} className="order-ticket">
                             <div className="ticket-header">
                                 <div>
                                     <span className="table-badge">Table {order.tableNumber}</span>
                                     {order.scheduledTime && (
                                         <div className="scheduled-badge">
-                                            🎯 For: {new Date(order.scheduledTime).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                            🎯 For:{' '}
+                                            {new Date(order.scheduledTime).toLocaleString([], {
+                                                weekday: 'short',
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                            })}
                                         </div>
                                     )}
                                 </div>
-                                <span className={`time-badge ${Math.floor(new Date() - new Date(order.orderTime)) / 60000 > 15 ? 'urgent' : ''}`}>
+                                <span
+                                    className={`time-badge ${
+                                        Math.floor(new Date() - new Date(order.orderTime)) / 60000 > 15
+                                            ? 'urgent'
+                                            : ''
+                                    }`}
+                                >
                                     {formatTimePassed(order.orderTime)}
                                 </span>
                             </div>
@@ -181,6 +221,7 @@ function KitchenPage() {
                             </ul>
                             <div className="ticket-footer">
                                 <button
+                                    type="button"
                                     className="btn btn-success btn-full"
                                     onClick={() => markCompleted(order._id)}
                                 >

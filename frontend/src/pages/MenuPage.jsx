@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import axios from 'axios';
+import { api } from '../api/client';
 import MenuCard from '../components/MenuCard';
 
 function MenuPage({ cart, addToCart }) {
@@ -25,8 +25,8 @@ function MenuPage({ cart, addToCart }) {
             try {
                 // Fetch menu items and ordering status in parallel
                 const [menuRes, statusRes] = await Promise.all([
-                    axios.get('/api/menu'),
-                    axios.get('/api/status'),
+                    api.get('/api/menu'),
+                    api.get('/api/status'),
                 ]);
 
                 setMenuItems(menuRes.data);

@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { api } from '../api/client';
 
 function CartPage({ cart, removeFromCart, addToCart, clearCart }) {
     const [orderStatus, setOrderStatus] = useState(null); // 'success' | 'error' | null
@@ -48,7 +48,7 @@ function CartPage({ cart, removeFromCart, addToCart, clearCart }) {
         }
 
         try {
-            const response = await axios.post('/api/order', {
+            const response = await api.post('/api/order', {
                 tableNumber: parseInt(tableNumber, 10),
                 items: cart.map((item) => ({
                     name: item.name,

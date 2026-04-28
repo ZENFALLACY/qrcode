@@ -5,9 +5,6 @@
 
 const Order = require('../models/Order');
 
-// Cutoff hour (24-hour format). Ordering is disabled at or after this hour.
-const ORDERING_CUTOFF_HOUR = 17; // 5 PM
-
 /**
  * Helper: checks whether ordering is currently allowed.
  * Returns { ordering: boolean, message: string }.
